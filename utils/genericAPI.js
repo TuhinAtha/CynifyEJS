@@ -19,20 +19,29 @@ module.exports = {
     'getList': function(model,req,res,next){
         var q = {};
         var filters = {};
-        var sortBy = 'id';
-        var sortDirection = 1;
         var pageSize = 10;
         var page = 1;
-
+        var sort = {
+            columnName : 'id',
+            direction : 'asc'
+        };
         req.query.q && (q = JSON.parse(req.query.q));
         req.query.filters && (filters = JSON.parse(req.query.filters));
-        req.query.sortBy && (sortBy = req.query.sortBy);
-        req.query.sortDirection && (sortDirection = parseInt(req.query.sortDirection));
         req.query.page && (page = parseInt(req.query.page));
         req.query.pageSize && (pageSize = parseInt(req.query.pageSize));
-
+        if(req.query.sort){
+            sort = JSON.parse(req.query.sort);
+        }else{
+            if(req.query.sortBy){
+                sort.columnName = req.query.sortBy;
+            }
+            if(req.query.sortDirection){
+                sort.direction = req.query.sortDirection;
+            }
+        }
+       
         var sortObj ={};
-        sortObj[sortBy] = sortDirection;
+        sortObj[sort.columnName] = (sort.direction == 'asc') ? 1 : -1;
 
 
         var listQuery = model.find(q).sort(sortObj).skip((page-1)*pageSize).limit(pageSize);
@@ -69,18 +78,22 @@ module.exports = {
             promises.push(filterquery.exec());
         }
         Q.all(promises).then(function(data){
-            return res.json(module.exports.mapResponseFromQueryResult(data,filters,q,pageSize));      
+            return res.json(module.exports.mapResponseFromQueryResult(data,filters,q,sort,page,pageSize));      
         }).catch(function(err){
             return res.status(500).send(err);
         });
     },
-    'mapResponseFromQueryResult' : function(result, filters, q, pageSize){
+    'mapResponseFromQueryResult' : function(result, filters, q, sort, page,pageSize){
         var index = 0;
         var responseData = {};
         //results
         responseData.results = result[index++];
         //totalCount
         responseData.totalCount = result[index++];
+        //currentPage
+        responseData.page = page;
+        //currentSort
+        responseData.sort = sort;
         //pages
         var pages = parseInt( responseData.totalCount / pageSize);
         ( responseData.totalCount % pageSize) != 0 && (pages ++);
@@ -136,5 +149,33 @@ module.exports = {
         responseData.filterOptions = filterData;
 
         return responseData;
+    },
+    'get':function(model,req,res,next){
+        var props = Object.keys(model.schema.paths);
+        console.log(props);
+        model.find({}, function(err, data) {
+            if(err){
+                return res.status(500).send(err);
+            }
+            res.json(data);  
+        });
+    },
+    'post':function(model,req,res,next){
+        var props = Object.keys(model.schema.paths);
+        var modelObj = new model();
+        for(var i in props){
+            var key = props[i];
+            if(req.body[key]){
+                modelObj[key] = req.body[key];
+            }
+        }
+        console.log(modelObj);
+        modelObj.save(function(err,data){
+            if(err){
+            return res.send(500,err);
+            }
+            return res.json(data);
+        });
+        
     }
 };
